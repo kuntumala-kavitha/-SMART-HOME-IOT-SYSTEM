@@ -1,0 +1,87 @@
+/Python Code for Sensors and Actuators/
+/Read Temperature and Humidity (DHT Sensor)/
+import Adafruit_DHT
+
+# Define sensor type and GPIO pin
+sensor = Adafruit_DHT.DHT11
+pin = 4
+
+def read_dht_sensor():
+    humidity, temperature = Adafruit_DHT.read_retry(sensor, pin)
+    if humidity is not None and temperature is not None:
+        return {'temperature': temperature, 'humidity': humidity}
+    else:
+        return {'error': 'Failed to read sensor data'}
+
+
+/ Control LED with Relay:/
+import RPi.GPIO as GPIO
+
+# GPIO setup
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(18, GPIO.OUT)  # Relay connected to GPIO18
+
+def control_led(state):
+    if state == 'on':
+        GPIO.output(18, GPIO.HIGH)
+    else:
+        GPIO.output(18, GPIO.LOW)
+
+/Detect Motion with PIR Sensor:/
+import RPi.GPIO as GPIO
+
+# GPIO setup
+PIR_PIN = 17
+GPIO.setup(PIR_PIN, GPIO.IN)
+
+def detect_motion():
+    if GPIO.input(PIR_PIN):
+        return "Motion detected!"
+    else:
+        return "No motion"
+
+
+/Flask Web Interface/
+from flask import Flask, jsonify, request
+from sensors import read_dht_sensor, control_led, detect_motion
+
+app = Flask(__name__)
+
+@app.route('/status', methods=['GET'])
+def status():
+    data = read_dht_sensor()
+    motion = detect_motion()
+    data['motion'] = motion
+    return jsonify(data)
+
+@app.route('/control', methods=['POST'])
+def control():
+    state = request.json.get('state')
+    control_led(state)
+    return jsonify({'status': f'LED turned {state}'})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+
+/ MQTT for Communication/
+import paho.mqtt.client as mqtt
+
+broker = "broker.hivemq.com"  # Public broker for demo
+port = 1883
+topic = "smarthome/control"
+
+def on_connect(client, userdata, flags, rc):
+    print(f"Connected with result code {rc}")
+    client.subscribe(topic)
+
+def on_message(client, userdata, msg):
+    message = msg.payload.decode()
+    control_led(message)  # Control LED based on message ('on'/'off')
+
+client = mqtt.Client()
+client.on_connect = on_connect
+client.on_message = on_message
+
+client.connect(broker, port, 60)
+client.loop_start()
+
